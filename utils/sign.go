@@ -9,16 +9,19 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"io/ioutil"
+	"sort"
+
+	"github.com/wanhuasong/genericfs/config"
 )
 
 var (
-	Pubkey  string
 	Privkey string
 )
 
 func VerifySig(origin, sig string) error {
-	b, err := ioutil.ReadFile(Pubkey)
+	b, err := ioutil.ReadFile(config.Cfg.PublicKey)
 	if err != nil {
 		return err
 	}
@@ -65,4 +68,20 @@ func SHA1(data []byte) []byte {
 	h := sha1.New()
 	h.Write(data)
 	return h.Sum(nil)
+}
+
+func SortParams(params map[string]string) string {
+	keys := make([]string, 0)
+	for key := range params {
+		keys = append(keys, key)
+	}
+	var s string
+	sort.Strings(keys)
+	for _, key := range keys {
+		if s != "" {
+			s += "&"
+		}
+		s += fmt.Sprintf("%s=%s", key, params[key])
+	}
+	return s
 }
