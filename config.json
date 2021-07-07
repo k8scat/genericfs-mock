@@ -1,0 +1,5 @@
+{
+  "dsn": "ones:ones1234@tcp(127.0.0.1:3336)/genericfs?parseTime=true&loc=Asia%2FShanghai&charset=utf8mb4",
+  "public_key": "/tmp/genericfs/public-key.pem",
+  "store_dir": "/tmp/genericfs/files"
+}
