@@ -2,6 +2,7 @@ DROP TABLE IF EXISTS `resource`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `resource` (
+  `id` bigint(20) PRIMARY KEY AUTO_INCREMENT,
   `uuid` varchar(8) COLLATE latin1_bin NOT NULL,
   `reference_type` tinyint(4) NOT NULL,
   `reference_id` varchar(16) COLLATE latin1_bin DEFAULT NULL,
@@ -19,7 +20,7 @@ CREATE TABLE `resource` (
   `modifier` varchar(8) COLLATE latin1_bin DEFAULT NULL COMMENT '修改者',
   `callback_url` varchar(100) NOT NULL COMMENT '上传回调地址',
   `callback_body` varchar(1000) NOT NULL COMMENT '上传回调内容',
-  PRIMARY KEY (`uuid`),
+  `is_public` tinyint(4) NOT NULL DEFAULT '0',
   KEY `index_ext_id` (`ext_id`) USING BTREE,
   KEY `idx_team_uuid_reference_id` (`team_uuid`,`reference_id`),
   KEY `idx_team_uuid_project_uuid_create_time` (`team_uuid`,`project_uuid`,`create_time`)

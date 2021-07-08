@@ -7,9 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-	"net/url"
 	"strconv"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/wanhuasong/genericfs/controllers"
@@ -116,33 +114,8 @@ func Auth(c *gin.Context) {
 		}
 
 	case http.MethodGet:
-		rawQuery := c.Request.URL.RawQuery
-		var err error
-		rawQuery, err = url.QueryUnescape(rawQuery)
-		if err != nil {
-			return
-		}
-		log.Printf("Raw query: %s", rawQuery)
-
-		items := strings.Split(rawQuery, "&")
-		for _, item := range items {
-			idx := strings.IndexByte(item, '=')
-			if idx == -1 || len(item) <= idx+1 {
-				continue
-			}
-
-			key := item[:idx]
-			if key == "attname" {
-				continue
-			}
-
-			val := item[idx+1:]
-			if key == utils.SigKey {
-				token = val
-			} else {
-				params[key] = val
-			}
-		}
+		c.Next()
+		return
 
 	default:
 		utils.Response(c, http.StatusBadRequest, "Unsupported method")

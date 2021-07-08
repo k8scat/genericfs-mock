@@ -23,11 +23,13 @@ type Resource struct {
 
 	CallbackURL  string `db:"callback_url" json:"callback_url"`
 	CallbackBody string `db:"callback_body" json:"callback_body"`
+
+	IsPublic bool `db:"is_public" json:"-"`
 }
 
 func GetResourceByUUID(uuid string) (*Resource, error) {
 	query := "SELECT uuid, reference_type, reference_id, team_uuid, project_uuid, owner_uuid, modifier, "
-	query += "type, source, ext_id, name, create_time, modify_time, status, description, callback_url, callback_body "
+	query += "type, source, ext_id, name, create_time, modify_time, status, description, callback_url, callback_body, is_public "
 	query += "FROM resource WHERE uuid=?;"
 	row := DB.QueryRow(query, uuid)
 	resource := new(Resource)
@@ -47,13 +49,14 @@ func GetResourceByUUID(uuid string) (*Resource, error) {
 		&resource.Status,
 		&resource.Description,
 		&resource.CallbackURL,
-		&resource.CallbackBody)
+		&resource.CallbackBody,
+		&resource.IsPublic)
 	return resource, err
 }
 
 func GetResourceByHash(hash string) (*Resource, error) {
 	query := "SELECT uuid, reference_type, reference_id, team_uuid, project_uuid, owner_uuid, modifier, "
-	query += "type, source, ext_id, name, create_time, modify_time, status, description, callback_url, callback_body "
+	query += "type, source, ext_id, name, create_time, modify_time, status, description, callback_url, callback_body, is_public "
 	query += "FROM resource WHERE ext_id=?;"
 	row := DB.QueryRow(query, hash)
 	resource := new(Resource)
@@ -73,14 +76,15 @@ func GetResourceByHash(hash string) (*Resource, error) {
 		&resource.Status,
 		&resource.Description,
 		&resource.CallbackURL,
-		&resource.CallbackBody)
+		&resource.CallbackBody,
+		&resource.IsPublic)
 	return resource, err
 }
 
 func AddResource(resource *Resource) error {
 	query := "INSERT INTO resource(uuid, reference_type, reference_id, team_uuid, project_uuid, owner_uuid, modifier, "
-	query += "type, source, ext_id, name, create_time, modify_time, status, description, callback_url, callback_body) "
-	query += "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);"
+	query += "type, source, ext_id, name, create_time, modify_time, status, description, callback_url, callback_body, is_public) "
+	query += "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);"
 	return Transact(func(tx *sql.Tx) error {
 		_, err := tx.Exec(query,
 			resource.UUID,
@@ -99,7 +103,8 @@ func AddResource(resource *Resource) error {
 			resource.Status,
 			resource.Description,
 			resource.CallbackURL,
-			resource.CallbackBody)
+			resource.CallbackBody,
+			resource.IsPublic)
 		return err
 	})
 }

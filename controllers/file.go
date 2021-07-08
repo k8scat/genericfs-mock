@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -44,19 +45,37 @@ type PersistRequest struct {
 }
 
 func Download(c *gin.Context) {
-	filename := c.Query("attname")
 	hash := c.Query("hash")
-	fp := filepath.Join(config.Cfg.StoreDir, hash)
-
+	if len(hash) == 0 {
+		utils.Response(c, http.StatusBadRequest, "Bad request")
+		return
+	}
 	resource, err := models.GetResourceByHash(hash)
 	if err != nil {
 		utils.Response(c, http.StatusBadRequest, fmt.Sprintf("Get resource failed: %+v", err))
 		return
 	}
+
+	if !resource.IsPublic {
+		rawQuery := c.Request.URL.RawQuery
+		rawQuery, err := url.QueryUnescape(rawQuery)
+		if err != nil {
+			utils.Response(c, http.StatusBadRequest, fmt.Sprintf("Unescape query failed: %+v", err))
+			return
+		}
+		err = authDownload(rawQuery)
+		if err != nil {
+			utils.Response(c, http.StatusUnauthorized, "Invalid token")
+			return
+		}
+	}
+
+	filename := c.Query("attname")
 	if filename == "" {
 		filename = resource.Name
 	}
 
+	fp := filepath.Join(config.Cfg.StoreDir, hash)
 	b, err := os.ReadFile(fp)
 	if err != nil {
 		utils.Response(c, http.StatusNotFound, "File not found")
@@ -74,6 +93,33 @@ func Download(c *gin.Context) {
 	c.Header("Content-Type", contentType)
 	c.Header("Content-Length", fmt.Sprintf("%d", len(b)))
 	c.Writer.Write(b)
+}
+
+func authDownload(query string) error {
+	log.Printf("Download raw query: %s", query)
+	items := strings.Split(query, "&")
+	var token string
+	params := make(map[string]string)
+	for _, item := range items {
+		idx := strings.IndexByte(item, '=')
+		if idx == -1 || len(item) <= idx+1 {
+			continue
+		}
+
+		key := item[:idx]
+		if key == "attname" {
+			continue
+		}
+
+		val := item[idx+1:]
+		if key == utils.SigKey {
+			token = val
+		} else {
+			params[key] = val
+		}
+	}
+	origin := utils.SortParams(params)
+	return utils.VerifySig(origin, token)
 }
 
 func Upload(c *gin.Context) {
@@ -141,7 +187,12 @@ func updateResource(c *gin.Context, filename, hash, mime string, fileSize int) e
 		}
 	}
 	if uuid == "" {
-		return nil
+		resource := &models.Resource{
+			IsPublic: true,
+			ExtID:    hash,
+			Name:     filename,
+		}
+		return models.AddResource(resource)
 	}
 
 	resource, err := models.GetResourceByUUID(uuid)
@@ -197,13 +248,13 @@ func fillCallbackBody(callbackBody string, resource *models.Resource, mime strin
 		val := kv[1]
 		if re.MatchString(val) {
 			switch val[2 : len(val)-1] {
-			case "etag":
+			case "key":
 				val = resource.ExtID
-			case "fname":
+			case "name":
 				val = resource.Name
-			case "fsize":
+			case "size":
 				val = strconv.Itoa(fileSize)
-			case "ext":
+			case "suffix":
 				dotIdx := strings.LastIndex(resource.Name, ".")
 				if dotIdx == -1 {
 					val = ""
@@ -270,7 +321,6 @@ func Mkzip(c *gin.Context) {
 
 	filename := fmt.Sprintf("%s.zip", req.TargetHash)
 	resource := &models.Resource{
-		UUID:  utils.GetRandomStr(8),
 		ExtID: req.TargetHash,
 		Name:  filename,
 	}
