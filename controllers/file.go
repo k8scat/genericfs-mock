@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -45,34 +46,47 @@ type PersistRequest struct {
 }
 
 func Download(c *gin.Context) {
-	hash := c.Query("hash")
+	hash := c.Param("hash")
 	if len(hash) == 0 {
 		utils.Response(c, http.StatusBadRequest, "Bad request")
 		return
 	}
+
 	resource, err := models.GetResourceByHash(hash)
 	if err != nil {
 		utils.Response(c, http.StatusBadRequest, fmt.Sprintf("Get resource failed: %+v", err))
 		return
 	}
 
+	rawQuery := c.Request.URL.RawQuery
+	rawQuery, err = url.QueryUnescape(rawQuery)
+	if err != nil {
+		utils.Response(c, http.StatusBadRequest, fmt.Sprintf("Unescape query failed: %+v", err))
+		return
+	}
+	log.Printf("Download raw query: %s", rawQuery)
+
+	op := strings.Split(rawQuery, "&")[0]
+	if strings.IndexByte(op, '=') != -1 {
+		op = ""
+	}
+	if op != "" {
+		handleOP(op)
+	}
+
 	if !resource.IsPublic {
-		rawQuery := c.Request.URL.RawQuery
-		rawQuery, err := url.QueryUnescape(rawQuery)
-		if err != nil {
-			utils.Response(c, http.StatusBadRequest, fmt.Sprintf("Unescape query failed: %+v", err))
-			return
-		}
-		err = authDownload(rawQuery)
+		err = authDownload(hash, rawQuery, op)
 		if err != nil {
 			utils.Response(c, http.StatusUnauthorized, "Invalid token")
 			return
 		}
 	}
 
+	isPreview := true
 	filename := c.Query("attname")
 	if filename == "" {
 		filename = resource.Name
+		isPreview = false
 	}
 
 	fp := filepath.Join(config.Cfg.StoreDir, hash)
@@ -88,18 +102,34 @@ func Download(c *gin.Context) {
 		return
 	}
 
+	var contentDisposition string
+	if isPreview {
+		contentDisposition = fmt.Sprintf("inline; filename=%s", filename)
+	} else {
+		contentDisposition = fmt.Sprintf("attachment; filename=%s", filename)
+	}
+
 	c.Writer.WriteHeader(http.StatusOK)
-	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+	c.Header("Content-Disposition", contentDisposition)
 	c.Header("Content-Type", contentType)
 	c.Header("Content-Length", fmt.Sprintf("%d", len(b)))
+	c.Header("Content-Transfer-Encoding", "binary")
 	c.Writer.Write(b)
 }
 
-func authDownload(query string) error {
-	log.Printf("Download raw query: %s", query)
+func handleOP(op string) {
+	log.Printf("Handle op: %s", op)
+}
+
+func authDownload(hash, query, op string) error {
 	items := strings.Split(query, "&")
 	var token string
-	params := make(map[string]string)
+	params := map[string]string{
+		"hash": hash,
+	}
+	if op != "" {
+		params["op"] = op
+	}
 	for _, item := range items {
 		idx := strings.IndexByte(item, '=')
 		if idx == -1 || len(item) <= idx+1 {
@@ -117,7 +147,18 @@ func authDownload(query string) error {
 		} else {
 			params[key] = val
 		}
+
+		if key == "e" {
+			expire, err := strconv.ParseInt(val, 10, 64)
+			if err != nil {
+				return err
+			}
+			if time.Now().Unix() > expire {
+				return errors.New("Token expired")
+			}
+		}
 	}
+	log.Printf("Download params: %+v", params)
 	origin := utils.SortParams(params)
 	return utils.VerifySig(origin, token)
 }
@@ -155,7 +196,7 @@ func Upload(c *gin.Context) {
 	f.Close()
 
 	filename := header.Filename
-	err = updateResource(c, filename, hash, mime, fileSize)
+	downloadURL, err := updateResource(c, filename, hash, mime, fileSize)
 	if err != nil {
 		utils.Response(c, http.StatusInternalServerError, fmt.Sprintf("Update resource failed: %+v", err))
 		return
@@ -164,7 +205,7 @@ func Upload(c *gin.Context) {
 	c.JSON(http.StatusOK, map[string]interface{}{
 		"code":    http.StatusOK,
 		"message": "Success",
-		"url":     "https://dl.dev.ones.ai/FrdyKS0SabeSJIx0fmlWEcQbTGZ9?e=1605654430&token=3Ub47hHnTjuEuV7uF9IS4cGwOWZGAtiBkPmA09e1:iTzyDmi3KEjFdMmHXOYsxNjPYrY",
+		"url":     downloadURL,
 		"version": 1,
 		"name":    filename,
 		"hash":    hash,
@@ -173,7 +214,7 @@ func Upload(c *gin.Context) {
 	})
 }
 
-func updateResource(c *gin.Context, filename, hash, mime string, fileSize int) error {
+func updateResource(c *gin.Context, filename, hash, mime string, fileSize int) (string, error) {
 	origin, _, _ := utils.ParseUploadToken(c)
 	var uuid string
 	items := strings.Split(origin, "&")
@@ -186,25 +227,41 @@ func updateResource(c *gin.Context, filename, hash, mime string, fileSize int) e
 			uuid = kv[1]
 		}
 	}
+
+	// Generate download url while resource is public
+	var downloadURL string
 	if uuid == "" {
 		resource := &models.Resource{
 			IsPublic: true,
 			ExtID:    hash,
 			Name:     filename,
 		}
-		return models.AddResource(resource)
-	}
+		err := models.AddResource(resource)
+		if err != nil {
+			return "", err
+		}
+		downloadURL = fmt.Sprintf("%s/download/%s", config.Cfg.BaseURL, hash)
+	} else {
+		resource, err := models.GetResourceByUUID(uuid)
+		if err != nil {
+			return "", err
+		}
 
-	resource, err := models.GetResourceByUUID(uuid)
-	if err != nil {
-		return err
-	}
+		if resource.IsPublic {
+			downloadURL = fmt.Sprintf("%s/download/%s", config.Cfg.BaseURL, hash)
+		}
 
-	resource.Name = filename
-	resource.ExtID = hash
-	resource.ModifyTime = time.Now().UnixNano() / int64(time.Microsecond)
-	defer uploadCallback(resource, mime, fileSize)
-	return models.UpdateResource(resource)
+		resource.Name = filename
+		resource.ExtID = hash
+		resource.ModifyTime = time.Now().UnixNano() / int64(time.Microsecond)
+		defer uploadCallback(resource, mime, fileSize)
+
+		err = models.UpdateResource(resource)
+		if err != nil {
+			return "", err
+		}
+	}
+	return downloadURL, nil
 }
 
 func uploadCallback(resource *models.Resource, mime string, fileSize int) {

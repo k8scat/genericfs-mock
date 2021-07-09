@@ -13,9 +13,11 @@ var (
 )
 
 type Config struct {
-	DSN       string `json:"dsn"`
-	PublicKey string `json:"public_key"`
-	StoreDir  string `json:"store_dir"`
+	DSN         string `json:"dsn"`
+	PublicKey   string `json:"public_key"`
+	StoreDir    string `json:"store_dir"`
+	TokenExpire int64    `json:"token_expire"`
+	BaseURL     string `json:"base_url"`
 }
 
 func InitConfig() error {

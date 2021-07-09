@@ -21,7 +21,7 @@ func Run() error {
 
 	api.Use(middlewares.Auth)
 
-	api.GET("/download", controllers.Download)
+	api.GET("/download/:hash", controllers.Download)
 	api.POST("/upload", controllers.Upload)
 	api.POST("/preupload", controllers.Preupload)
 	api.POST("/mkzip", controllers.Mkzip)

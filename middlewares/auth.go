@@ -8,8 +8,10 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/wanhuasong/genericfs/config"
 	"github.com/wanhuasong/genericfs/controllers"
 	"github.com/wanhuasong/genericfs/utils"
 )
@@ -102,7 +104,7 @@ func Auth(c *gin.Context) {
 			var err error
 			origin, token, err = utils.ParseUploadToken(c)
 			if err != nil {
-				utils.Response(c, http.StatusBadRequest, "Bad request")
+				utils.Response(c, http.StatusBadRequest, fmt.Sprintf("%+v", err))
 				c.Abort()
 				return
 			}
@@ -124,6 +126,25 @@ func Auth(c *gin.Context) {
 	}
 
 	if origin == "" && len(params) != 0 {
+		t, found := params["t"]
+		if !found {
+			utils.Response(c, http.StatusUnauthorized, "Invalid token")
+			c.Abort()
+			return
+		}
+		signTime, err := strconv.ParseInt(t, 10, 64)
+		if err != nil {
+			log.Printf("Parse sign time failed: %+v", err)
+			utils.Response(c, http.StatusUnauthorized, "Invalid token")
+			c.Abort()
+			return
+		}
+		if config.Cfg.TokenExpire+signTime < time.Now().Unix() {
+			utils.Response(c, http.StatusUnauthorized, "Token expired")
+			c.Abort()
+			return
+		}
+
 		origin = utils.SortParams(params)
 	}
 	if err := utils.VerifySig(origin, token); err != nil {
