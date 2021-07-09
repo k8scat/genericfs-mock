@@ -30,6 +30,7 @@ import (
 type PreuploadRequest struct {
 	SignTime int64  `json:"t"` // time.second
 	Token    string `json:"token"`
+	IsPublic bool   `json:"is_public"`
 
 	*models.Resource
 }

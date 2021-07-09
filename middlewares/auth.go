@@ -66,6 +66,7 @@ func Auth(c *gin.Context) {
 				params["create_time"] = strconv.FormatInt(req.CreateTime, 10)
 				params["description"] = req.Description
 				params["modify_time"] = strconv.FormatInt(req.ModifyTime, 10)
+				params["is_public"] = strconv.FormatBool(req.IsPublic)
 				token = req.Token
 
 			case EndpointMkzip:
