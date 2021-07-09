@@ -6,6 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"io/ioutil"
 	"log"
@@ -296,6 +299,14 @@ func fillCallbackBody(callbackBody string, resource *models.Resource, mime strin
 	params := make(map[string]string)
 	items := strings.Split(callbackBody, "&")
 	re := regexp.MustCompile(`^\$(.+)$`)
+
+	var w int
+	var h int
+	if strings.HasPrefix(mime, "image/") {
+		p := filepath.Join(config.Cfg.StoreDir, resource.ExtID)
+		w, h = getImageDimension(p)
+	}
+
 	for _, item := range items {
 		kv := strings.Split(item, "=")
 		if len(kv) != 2 {
@@ -303,6 +314,8 @@ func fillCallbackBody(callbackBody string, resource *models.Resource, mime strin
 		}
 		key := kv[0]
 		val := kv[1]
+
+		// process $() val
 		if re.MatchString(val) {
 			switch val[2 : len(val)-1] {
 			case "key":
@@ -323,15 +336,14 @@ func fillCallbackBody(callbackBody string, resource *models.Resource, mime strin
 			case "exif":
 				val = ""
 			case "imageInfo.width":
-				val = "0"
+				val = strconv.Itoa(w)
 			case "imageInfo.height":
-				val = "0"
+				val = strconv.Itoa(h)
 			default:
 				log.Printf("Unknown upload callback val: %s", val)
 				continue
 			}
 		}
-
 		params[key] = val
 	}
 
@@ -343,6 +355,21 @@ func fillCallbackBody(callbackBody string, resource *models.Resource, mime strin
 		callbackBody += fmt.Sprintf("%s=%s", k, v)
 	}
 	return callbackBody
+}
+
+func getImageDimension(imagePath string) (int, int) {
+	file, err := os.Open(imagePath)
+	if err != nil {
+		log.Printf("Open image file failed: %+v", err)
+		return 0, 0
+	}
+
+	image, _, err := image.DecodeConfig(file)
+	if err != nil {
+		log.Printf("Decode image config failed: %+v", err)
+		return 0, 0
+	}
+	return image.Width, image.Height
 }
 
 func Preupload(c *gin.Context) {
