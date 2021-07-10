@@ -1,5 +1,7 @@
 {
-  "dsn": "ones:ones1234@tcp(127.0.0.1:3336)/genericfs?parseTime=true&loc=Asia%2FShanghai&charset=utf8mb4",
-  "public_key": "/tmp/genericfs/public-key.pem",
-  "store_dir": "/tmp/genericfs/files"
+  "dsn": "root:toor1234@tcp(127.0.0.1:3336)/genericfs?parseTime=true&loc=Asia%2FShanghai&charset=utf8mb4",
+  "public_key": "/data/genericfs/public-key.pem",
+  "store_dir": "/data/genericfs/files",
+  "token_expire": 3600,
+  "base_url": "https://genericfs.com"
 }

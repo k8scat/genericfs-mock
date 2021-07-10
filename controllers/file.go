@@ -188,6 +188,12 @@ func Upload(c *gin.Context) {
 		return
 	}
 
+	fileExisted, err := models.IsFileExisted(hash)
+	if err != nil {
+		utils.Response(c, http.StatusInternalServerError, fmt.Sprintf("Check file failed: %+v", err))
+		return
+	}
+
 	fileSize := len(content)
 	mime := header.Header.Get("Content-Type")
 	savePath := filepath.Join(config.Cfg.StoreDir, hash)
@@ -206,11 +212,14 @@ func Upload(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, map[string]interface{}{
-		"code":    http.StatusOK,
-		"message": "Success",
+	statusCode := http.StatusOK
+	if fileExisted {
+		statusCode = 579
+	}
+	c.JSON(statusCode, map[string]interface{}{
+		"code":    statusCode,
+		"message": "success",
 		"url":     downloadURL,
-		"version": 1,
 		"name":    filename,
 		"hash":    hash,
 		"mime":    mime,
@@ -385,7 +394,7 @@ func Preupload(c *gin.Context) {
 		utils.Response(c, http.StatusInternalServerError, fmt.Sprintf("Failed to add resource: %+v", err))
 		return
 	}
-	utils.Response(c, http.StatusOK, "Success")
+	utils.Response(c, http.StatusOK, "success")
 }
 
 func Mkzip(c *gin.Context) {
@@ -416,7 +425,7 @@ func Mkzip(c *gin.Context) {
 	}
 
 	defer mkzipCallback(req.CallbackURL)
-	utils.Response(c, http.StatusOK, "Success")
+	utils.Response(c, http.StatusOK, "success")
 }
 
 func zipFiles(hash string, hashes []string) error {
@@ -500,5 +509,5 @@ func Persist(c *gin.Context) {
 	}
 	log.Printf("Persist req: %+v", req)
 
-	utils.Response(c, http.StatusOK, "Success")
+	utils.Response(c, http.StatusOK, "success")
 }

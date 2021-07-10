@@ -110,7 +110,7 @@ func AddResource(resource *Resource) error {
 }
 
 func UpdateResource(resource *Resource) error {
-	query := "Update resource SET reference_type=?, reference_id=?, team_uuid=?, project_uuid=?, modifier=?, "
+	query := "UPDATE resource SET reference_type=?, reference_id=?, team_uuid=?, project_uuid=?, modifier=?, "
 	query += "type=?, ext_id=?, name=?, create_time=?, modify_time=?, status=?, description=? WHERE uuid=?;"
 	return Transact(func(tx *sql.Tx) error {
 		_, err := tx.Exec(query,
@@ -129,4 +129,12 @@ func UpdateResource(resource *Resource) error {
 			resource.UUID)
 		return err
 	})
+}
+
+func IsFileExisted(hash string) (bool, error) {
+	query := "SELECT COUNT(1) FROM resource WHERE ext_id=?;"
+	var count int
+	row := DB.QueryRow(query, hash)
+	err := row.Scan(&count)
+	return count > 0, err
 }

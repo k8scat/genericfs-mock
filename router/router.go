@@ -1,6 +1,7 @@
 package router
 
 import (
+	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	"github.com/wanhuasong/genericfs/controllers"
 	"github.com/wanhuasong/genericfs/middlewares"
@@ -19,6 +20,7 @@ func Run() error {
 	// 	MaxAge:          12 * time.Hour,
 	// }))
 
+	api.Use(gzip.Gzip(gzip.DefaultCompression))
 	api.Use(middlewares.Auth)
 
 	api.GET("/download/:hash", controllers.Download)
