@@ -27,6 +27,12 @@ import (
 	"github.com/wanhuasong/genericfs/utils"
 )
 
+const (
+	StatusFileExisted = 579
+
+	RealStatusFileExisted = 614
+)
+
 type PreuploadRequest struct {
 	SignTime int64  `json:"t"` // time.second
 	Token    string `json:"token"`
@@ -212,12 +218,20 @@ func Upload(c *gin.Context) {
 		return
 	}
 
-	statusCode := http.StatusOK
 	if fileExisted {
-		statusCode = 579
+		errPayload := map[string]interface{}{
+			"err_code": RealStatusFileExisted,
+			"hash":     hash,
+			"error":    "file exists",
+		}
+		b, _ := json.Marshal(errPayload)
+		c.JSON(StatusFileExisted, map[string]interface{}{
+			"error": string(b),
+		})
+		return
 	}
-	c.JSON(statusCode, map[string]interface{}{
-		"code":    statusCode,
+	c.JSON(http.StatusOK, map[string]interface{}{
+		"code":    http.StatusOK,
 		"message": "success",
 		"url":     downloadURL,
 		"name":    filename,
