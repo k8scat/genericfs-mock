@@ -92,11 +92,12 @@ func Download(c *gin.Context) {
 		}
 	}
 
-	isPreview := true
+	isPreview := false
 	filename := c.Query("attname")
+	log.Printf("attname: %s", filename)
 	if filename == "" {
 		filename = resource.Name
-		isPreview = false
+		isPreview = true
 	}
 
 	fp := filepath.Join(config.Cfg.StoreDir, hash)
@@ -114,15 +115,20 @@ func Download(c *gin.Context) {
 
 	var contentDisposition string
 	if isPreview {
-		contentDisposition = fmt.Sprintf("inline; filename=%s", filename)
+		contentDisposition = fmt.Sprintf("inline; filename=\"%s\"", filename)
 	} else {
-		contentDisposition = fmt.Sprintf("attachment; filename=%s", filename)
+		contentDisposition = fmt.Sprintf("attachment; filename=\"%s\"", filename)
 	}
 
 	c.Writer.WriteHeader(http.StatusOK)
 	c.Header("Content-Disposition", contentDisposition)
 	c.Header("Content-Type", contentType)
-	c.Header("Content-Length", fmt.Sprintf("%d", len(b)))
+
+	contentLength := len(b)
+	log.Printf("Content-Length: %d", contentLength)
+	c.Header("Content-Length", fmt.Sprintf("%d", contentLength))
+
+	c.Header("Content-Encoding", "binary")
 	c.Header("Content-Transfer-Encoding", "binary")
 	c.Writer.Write(b)
 }
@@ -212,7 +218,7 @@ func Upload(c *gin.Context) {
 	f.Close()
 
 	filename := header.Filename
-	downloadURL, err := updateResource(c, filename, hash, mime, fileSize)
+	resource, downloadURL, err := updateResource(c, filename, hash, mime, fileSize)
 	if err != nil {
 		utils.Response(c, http.StatusInternalServerError, fmt.Sprintf("Update resource failed: %+v", err))
 		return
@@ -220,9 +226,10 @@ func Upload(c *gin.Context) {
 
 	if fileExisted {
 		errPayload := map[string]interface{}{
-			"err_code": RealStatusFileExisted,
-			"hash":     hash,
-			"error":    "file exists",
+			"err_code":      RealStatusFileExisted,
+			"hash":          hash,
+			"error":         "file exists",
+			"callback_body": resource.CallbackBody,
 		}
 		b, _ := json.Marshal(errPayload)
 		c.JSON(StatusFileExisted, map[string]interface{}{
@@ -241,7 +248,7 @@ func Upload(c *gin.Context) {
 	})
 }
 
-func updateResource(c *gin.Context, filename, hash, mime string, fileSize int) (string, error) {
+func updateResource(c *gin.Context, filename, hash, mime string, fileSize int) (*models.Resource, string, error) {
 	origin, _, _ := utils.ParseUploadToken(c)
 	var uuid string
 	items := strings.Split(origin, "&")
@@ -256,22 +263,24 @@ func updateResource(c *gin.Context, filename, hash, mime string, fileSize int) (
 	}
 
 	// Generate download url while resource is public
+	var resource *models.Resource
 	var downloadURL string
 	if uuid == "" {
-		resource := &models.Resource{
+		resource = &models.Resource{
 			IsPublic: true,
 			ExtID:    hash,
 			Name:     filename,
 		}
 		err := models.AddResource(resource)
 		if err != nil {
-			return "", err
+			return nil, "", err
 		}
 		downloadURL = fmt.Sprintf("%s/download/%s", config.Cfg.BaseURL, hash)
 	} else {
-		resource, err := models.GetResourceByUUID(uuid)
+		var err error
+		resource, err = models.GetResourceByUUID(uuid)
 		if err != nil {
-			return "", err
+			return nil, "", err
 		}
 
 		if resource.IsPublic {
@@ -281,19 +290,18 @@ func updateResource(c *gin.Context, filename, hash, mime string, fileSize int) (
 		resource.Name = filename
 		resource.ExtID = hash
 		resource.ModifyTime = time.Now().UnixNano() / int64(time.Microsecond)
+		resource.CallbackBody = fillCallbackBody(resource.CallbackBody, resource, mime, fileSize)
 		defer uploadCallback(resource, mime, fileSize)
 
 		err = models.UpdateResource(resource)
 		if err != nil {
-			return "", err
+			return nil, "", err
 		}
 	}
-	return downloadURL, nil
+	return resource, downloadURL, nil
 }
 
 func uploadCallback(resource *models.Resource, mime string, fileSize int) {
-	resource.CallbackBody = fillCallbackBody(resource.CallbackBody, resource, mime, fileSize)
-
 	log.Printf("Upload callback url: %s", resource.CallbackURL)
 	log.Printf("Upload callback body: %s", resource.CallbackBody)
 	payload := strings.NewReader(resource.CallbackBody)
